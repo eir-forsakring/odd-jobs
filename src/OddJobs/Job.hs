@@ -532,7 +532,7 @@ jobPoller = do
 
           -- When we find one or more jobs to run, fork and try to find the next job without any delay...
           jobs -> do
-            forM_ many $ \thing ->
+            forM_ jobs $ \thing ->
               case thing of
                 (Only (jid :: JobId)) -> do
                   void $ async $ runJob jid
