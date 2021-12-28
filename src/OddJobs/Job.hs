@@ -530,12 +530,16 @@ jobPoller = do
           -- When we don't have any jobs to run, we can relax a bit...
           [] -> pure delayAction
 
-          -- When we find a job to run, fork and try to find the next job without any delay...
-          [Only (jid :: JobId)] -> do
-            void $ async $ runJob jid
-            pure noDelayAction
+          -- When we find one or more jobs to run, fork and try to find the next job without any delay...
+          jobs -> do
+            forM_ many $ \thing ->
+              case thing of
+                (Only (jid :: JobId)) -> do
+                  void $ async $ runJob jid
+                other ->
+                  error $ "WTF just happened? I was supposed to get the id of a job, but got: " ++ (show other)
 
-          x -> error $ "WTF just happened? I was supposed to get only a single row, but got: " ++ (show x)
+            pure noDelayAction
       nextAction
   where
     delayAction = delaySeconds =<< getPollingInterval

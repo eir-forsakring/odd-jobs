@@ -1,0 +1,76 @@
+cradle:
+  stack:
+    - path: "./src"
+      component: "odd-jobs:lib"
+
+    - path: "./dev/DevelMain.hs"
+      component: "odd-jobs:exe:devel"
+
+    - path: "./src/DevelMain.hs"
+      component: "odd-jobs:exe:devel"
+
+    - path: "./dev/OddJobs/Cli.hs"
+      component: "odd-jobs:exe:devel"
+
+    - path: "./dev/OddJobs/ConfigBuilder.hs"
+      component: "odd-jobs:exe:devel"
+
+    - path: "./dev/OddJobs/Endpoints.hs"
+      component: "odd-jobs:exe:devel"
+
+    - path: "./dev/OddJobs/Job.hs"
+      component: "odd-jobs:exe:devel"
+
+    - path: "./dev/OddJobs/Migrations.hs"
+      component: "odd-jobs:exe:devel"
+
+    - path: "./dev/OddJobs/Types.hs"
+      component: "odd-jobs:exe:devel"
+
+    - path: "./dev/OddJobs/Web.hs"
+      component: "odd-jobs:exe:devel"
+
+    - path: "./dev/UI.hs"
+      component: "odd-jobs:exe:devel"
+
+    - path: "./dev/Paths_odd_jobs.hs"
+      component: "odd-jobs:exe:devel"
+
+    - path: "./src/OddJobs/Cli.hs"
+      component: "odd-jobs:exe:devel"
+
+    - path: "./src/OddJobs/ConfigBuilder.hs"
+      component: "odd-jobs:exe:devel"
+
+    - path: "./src/OddJobs/Endpoints.hs"
+      component: "odd-jobs:exe:devel"
+
+    - path: "./src/OddJobs/Job.hs"
+      component: "odd-jobs:exe:devel"
+
+    - path: "./src/OddJobs/Migrations.hs"
+      component: "odd-jobs:exe:devel"
+
+    - path: "./src/OddJobs/Types.hs"
+      component: "odd-jobs:exe:devel"
+
+    - path: "./src/OddJobs/Web.hs"
+      component: "odd-jobs:exe:devel"
+
+    - path: "./src/UI.hs"
+      component: "odd-jobs:exe:devel"
+
+    - path: "./src/Paths_odd_jobs.hs"
+      component: "odd-jobs:exe:devel"
+
+    - path: "./examples/OddJobsCliExample.lhs"
+      component: "odd-jobs:exe:odd-jobs-cli-example"
+
+    - path: "./examples/Paths_odd_jobs.hs"
+      component: "odd-jobs:exe:odd-jobs-cli-example"
+
+    - path: "./test"
+      component: "odd-jobs:test:jobrunner"
+
+    - path: "./src"
+      component: "odd-jobs:test:jobrunner"
