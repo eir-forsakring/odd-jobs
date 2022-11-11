@@ -8,12 +8,13 @@ import Database.PostgreSQL.Simple as PGS
 import Data.Pool
 import Control.Monad.Logger (LogLevel(..), LogStr, toLogStr)
 import Data.Text (Text)
-import Lucid (Html, toHtml, class_, div_, span_, br_, button_, a_, href_, onclick_)
+import Lucid (Html, ToHtml, toHtml, toHtmlRaw, class_, div_, span_, br_, button_, a_, href_, onclick_)
 import Data.Maybe (fromMaybe)
 import Data.List as DL
 import Data.Aeson as Aeson hiding (Success)
+import Data.Aeson.Key
 import qualified Data.Text as T
-import qualified Data.HashMap.Lazy as HM
+import qualified Data.Aeson.KeyMap as KM
 import GHC.Generics
 import Data.Proxy (Proxy(..))
 import Generics.Deriving.ConNames
@@ -24,6 +25,9 @@ import qualified Data.ByteString as BS
 import UnliftIO (MonadUnliftIO, withRunInIO, bracket, liftIO)
 import qualified System.Log.FastLogger as FLogger
 
+instance ToHtml Key where
+  toHtml = toHtml . toText
+  toHtmlRaw = toHtmlRaw . toText
 
 -- | This function gives you a 'Config' with a bunch of sensible defaults
 -- already applied. It requires the bare minimum configuration parameters that
@@ -182,7 +186,7 @@ defaultErrorToHtml e =
 
 defaultJobContent :: Value -> Value
 defaultJobContent v = case v of
-  Aeson.Object o -> case HM.lookup "contents" o of
+  Aeson.Object o -> case KM.lookup "contents" o of
     Nothing -> v
     Just c -> c
   _ -> v
@@ -191,7 +195,7 @@ defaultPayloadToHtml :: Value -> Html ()
 defaultPayloadToHtml v = case v of
   Aeson.Object o -> do
     toHtml ("{ " :: Text)
-    forM_ (HM.toList o) $ \(k, v2) -> do
+    forM_ (KM.toList o) $ \(k, v2) -> do
       span_ [ class_ " key-value-pair " ] $ do
         span_ [ class_ "key" ] $ toHtml $ k <> ":"
         span_ [ class_ "value" ] $ defaultPayloadToHtml v2
@@ -254,7 +258,7 @@ defaultDynamicJobTypes tname jobTypeSql = AJTSql $ \conn -> do
 defaultJobType :: Job -> Text
 defaultJobType Job{jobPayload} =
   case jobPayload of
-    Aeson.Object hm -> case HM.lookup "tag" hm of
+    Aeson.Object hm -> case KM.lookup "tag" hm of
       Just (Aeson.String t) -> t
       _ -> "unknown"
     _ -> "unknown"

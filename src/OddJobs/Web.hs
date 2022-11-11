@@ -24,7 +24,7 @@ import Lucid
 import Lucid.Html5
 import Lucid.Base
 import Data.String.Conv
-import qualified Data.HashMap.Strict as HM
+import qualified Data.Aeson.KeyMap as KM
 import Data.List as DL hiding (filter, and)
 import Control.Monad
 import Data.Time.Format.Human (humanReadableTime')
@@ -94,7 +94,6 @@ instance ToJSON Filter where
   toJSON = Aeson.genericToJSON  Aeson.defaultOptions{omitNothingFields = True}
 instance FromJSON Filter where
   parseJSON = Aeson.genericParseJSON Aeson.defaultOptions{omitNothingFields = True}
-
 
 instance FromHttpApiData Filter where
   parseQueryParam x = case eitherDecode (toS x) of
@@ -366,7 +365,7 @@ showText a = toS $ show a
 
 jobContent :: Value -> Value
 jobContent v = case v of
-  Aeson.Object o -> case HM.lookup "contents" o of
+  Aeson.Object o -> case KM.lookup "contents" o of
     Nothing -> v
     Just c -> c
   _ -> v
