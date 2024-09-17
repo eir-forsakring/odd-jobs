@@ -1,9 +1,5 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE FlexibleInstances #-} 
--- {-# LANGUAGE FlexibleContexts #-}
--- {-# LANGUAGE ExistentialQuantification #-}
--- {-# LANGUAGE ScopedTypeVariables #-}
---  , PartialTypeSignatures, TupleSections, DeriveGeneric, UndecidableInstances #-}
 
 module OddJobs.Job
   (
@@ -115,6 +111,7 @@ import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BSL
 import System.FilePath (FilePath)
 import qualified System.Directory as Dir
+import Data.Aeson.Types (iparse, IResult(..), formatError)
 import Prelude hiding (log)
 import GHC.Exts (toList)
 import Database.PostgreSQL.Simple.Types as PGS (Identifier(..))
@@ -538,8 +535,7 @@ jobPoller = do
               case thing of
                 (Only (jid :: JobId)) -> do
                   void $ runInIO $ async $ runJob jid
-                other ->
-                  error $ "WTF just happened? I was supposed to get the id of a job, but got: " ++ (show other)
+                --other -> error $ "WTF just happened? I was supposed to get the id of a job, but got: " ++ (show other)
 
             pure noDelayAction
       nextAction
@@ -569,7 +565,7 @@ jobEventListener = do
     void $ liftIO $ PGS.execute monitorDbConn ("LISTEN ?") (Only $ pgEventName tname)
     forever $ do
       runInIO $ log LevelDebug $ LogText "[LISTEN/NOTIFY] Event loop"
-      notif <- runInIO $ getNotification monitorDbConn
+      notif <- getNotification monitorDbConn
       (runInIO concurrencyControlFn) >>= \case
         False -> runInIO $ log LevelWarn $ LogText "Received job event, but ignoring it due to concurrency control"
         True -> do
