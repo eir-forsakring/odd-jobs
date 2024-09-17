@@ -28,6 +28,7 @@ import Data.Pool as Pool
 import Control.Monad.Reader
 import Data.String.Conv (toS)
 import Control.Monad.Except
+import Control.Monad (void)
 import Data.Time as Time
 import Data.Aeson as Aeson
 import qualified Data.HashMap.Strict as HM

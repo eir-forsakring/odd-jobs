@@ -1,6 +1,9 @@
-{-# LANGUAGE RankNTypes, FlexibleInstances, FlexibleContexts, PartialTypeSignatures, TupleSections, DeriveGeneric, UndecidableInstances #-}
-{-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE FlexibleInstances #-} 
+-- {-# LANGUAGE FlexibleContexts #-}
+-- {-# LANGUAGE ExistentialQuantification #-}
+-- {-# LANGUAGE ScopedTypeVariables #-}
+--  , PartialTypeSignatures, TupleSections, DeriveGeneric, UndecidableInstances #-}
 
 module OddJobs.Job
   (
@@ -101,8 +104,7 @@ import Data.Aeson hiding (Success)
 import qualified Data.Aeson as Aeson
 import qualified Data.Aeson.Types as Aeson (Parser, parseMaybe)
 import Data.String.Conv (StringConv(..), toS)
-import Data.Functor (void)
-import Control.Monad (forever)
+import Control.Monad (forever, forM_, void)
 import Data.Maybe (isNothing, maybe, fromMaybe, listToMaybe, mapMaybe)
 import Data.Either (either)
 import Control.Monad.Reader
@@ -128,7 +130,7 @@ import Database.PostgreSQL.Simple.ToField as PGS (toField)
 -- __In future,__ this /internal/ implementation detail will allow us to offer a
 -- type-class based interface as well (similar to what
 -- 'Yesod.JobQueue.YesodJobQueue' provides).
-class (MonadUnliftIO m, MonadBaseControl IO m) => HasJobRunner m where
+class (MonadUnliftIO m, MonadIO m) => HasJobRunner m where
   getPollingInterval :: m Seconds
   onJobSuccess :: Job -> m ()
   onJobFailed :: m [JobErrHandler]
@@ -253,7 +255,9 @@ withDbConnection :: (HasJobRunner m)
                  -> m a
 withDbConnection action = do
   pool <- getDbPool
-  withResource pool action
+  withRunInIO $ \runInIO -> withResource pool (runInIO . action)
+  --liftIO $ withResource pool (liftIO . action)
+
 
 --
 -- $dbHelpers
@@ -473,7 +477,7 @@ waitForJobs = do
 getConcurrencyControlFn :: (HasJobRunner m)
                         => m (m Bool)
 getConcurrencyControlFn = getConcurrencyControl >>= \case
-  UnlimitedConcurrentJobs -> pure $ pure True
+  UnlimitedConcurrentJobs -> pure $ pure $ True
   MaxConcurrentJobs maxJobs -> pure $ do
     curJobs <- getRunnerEnv >>= (readIORef . envJobThreadsRef)
     pure $ (DL.length curJobs) < maxJobs
@@ -508,6 +512,7 @@ jobPollingIO pollerDbConn processName tname lockTimeout = do
 --         job was picked up execution, but didn't complete on time (possible
 --         because the thread/process executing it crashed without being able to
 --         update the DB)
+
 jobPoller :: (HasJobRunner m) => m ()
 jobPoller = do
   processName <- liftIO jobWorkerName
@@ -517,38 +522,36 @@ jobPoller = do
   traceM "jobPoller just before log statement"
   log LevelInfo $ LogText $ toS $ "Starting the job monitor via DB polling with processName=" <> processName
   concurrencyControlFn <- getConcurrencyControlFn
-  withResource pool $ \pollerDbConn -> forever $ concurrencyControlFn >>= \case
+  withRunInIO $ \runInIO -> withResource pool $ \pollerDbConn -> forever $ (runInIO concurrencyControlFn) >>= \case
     False -> do
-      log LevelWarn $ LogText $ "NOT polling the job queue due to concurrency control"
+      runInIO $ log LevelWarn $ LogText $ "NOT polling the job queue due to concurrency control"
       -- If we can't run any jobs ATM, relax and wait for resources to free up
-      delayAction
+      delaySeconds =<< runInIO getPollingInterval 
     True -> do
       nextAction <- mask_ $ do
-        log LevelDebug $ LogText $ toS $ "[" <> processName <> "] Polling the job queue.."
+        runInIO $ log LevelDebug $ LogText $ toS $ "[" <> processName <> "] Polling the job queue.."
         r <- liftIO $ jobPollingIO pollerDbConn processName tname lockTimeout
         case r of
           -- When we don't have any jobs to run, we can relax a bit...
-          [] -> pure delayAction
+          [] -> pure $ delaySeconds =<< runInIO getPollingInterval 
 
           -- When we find one or more jobs to run, fork and try to find the next job without any delay...
           jobs -> do
             forM_ jobs $ \thing ->
               case thing of
                 (Only (jid :: JobId)) -> do
-                  void $ async $ runJob jid
+                  void $ runInIO $ async $ runJob jid
                 other ->
                   error $ "WTF just happened? I was supposed to get the id of a job, but got: " ++ (show other)
 
             pure noDelayAction
       nextAction
   where
-    delayAction = delaySeconds =<< getPollingInterval
     noDelayAction = pure ()
 
 -- | Uses PostgreSQL's LISTEN/NOTIFY to be immediately notified of newly created
 -- jobs.
-jobEventListener :: (HasJobRunner m)
-                 => m ()
+jobEventListener :: (HasJobRunner m) => m ()
 jobEventListener = do
   log LevelInfo $ LogText "Starting the job monitor via LISTEN/NOTIFY..."
   pool <- getDbPool
@@ -565,34 +568,34 @@ jobEventListener = do
           [Only (_ :: JobId)] -> pure $ Just jid
           x -> error $ "WTF just happned? Was expecting a single row to be returned, received " ++ (show x)
 
-  withResource pool $ \monitorDbConn -> do
+  withRunInIO $ \runInIO -> withResource pool $ \monitorDbConn -> do
     void $ liftIO $ PGS.execute monitorDbConn ("LISTEN ?") (Only $ pgEventName tname)
-    forever $ do
-      log LevelDebug $ LogText "[LISTEN/NOTIFY] Event loop"
-      notif <- liftIO $ getNotification monitorDbConn
-      concurrencyControlFn >>= \case
-        False -> log LevelWarn $ LogText "Received job event, but ignoring it due to concurrency control"
+    forever $ 
+    --  log LevelDebug $ LogText "[LISTEN/NOTIFY] Event loop"
+      --notif <- liftIO $ getNotification monitorDbConn
+      (runInIO concurrencyControlFn) >>= \case
+        False -> runInIO whatever -- log LevelWarn $ LogText "Received job event, but ignoring it due to concurrency control"
         True -> do
-          let pload = notificationData notif
-          log LevelDebug $ LogText $ toS $ "NOTIFY | " <> show pload
+          let pload = notificationData undefined --notif
+          runInIO (log LevelDebug $ LogText $ toS $ "NOTIFY | " <> show pload)
           case (eitherDecode $ toS pload) of
-            Left e -> log LevelError $ LogText $ toS $  "Unable to decode notification payload received from Postgres. Payload=" <> show pload <> " Error=" <> show e
+            Left e -> runInIO (log LevelError $ LogText $ toS $  "Unable to decode notification payload received from Postgres. Payload=" <> show pload <> " Error=" <> show e)
 
             -- Checking if job needs to be fired immediately AND it is not already
             -- taken by some othe thread, by the time it got to us
             Right (v :: Value) -> case (Aeson.parseMaybe parser v) of
-              Nothing -> log LevelError $ LogText $ toS $ "Unable to extract id/run_at/locked_at from " <> show pload
+              Nothing -> runInIO (log LevelError $ LogText $ toS $ "Unable to extract id/run_at/locked_at from " <> show pload)
               Just (jid, runAt_, mLockedAt_) -> do
                 t <- liftIO getCurrentTime
                 if (runAt_ <= t) && (isNothing mLockedAt_)
-                  then do log LevelDebug $ LogText $ toS $ "Job needs needs to be run immediately. Attempting to fork in background. JobId=" <> show jid
+                  then do runInIO (log LevelDebug $ LogText $ toS $ "Job needs needs to be run immediately. Attempting to fork in background. JobId=" <> show jid)
                           void $ async $ do
                             -- Let's try to lock the job first... it is possible that it has already
                             -- been picked up by the poller by the time we get here.
-                            tryLockingJob jid >>= \case
+                            runInIO (tryLockingJob jid) >>= \case
                               Nothing -> pure ()
-                              Just lockedJid -> runJob lockedJid
-                  else log LevelDebug $ LogText $ toS $ "Job is either for future, or is already locked. Skipping. JobId=" <> show jid
+                              Just lockedJid -> runInIO (runJob lockedJid)
+                  else runInIO (log LevelDebug $ LogText $ toS $ "Job is either for future, or is already locked. Skipping. JobId=" <> show jid)
   where
     parser :: Value -> Aeson.Parser (JobId, UTCTime, Maybe UTCTime)
     parser = withObject "expecting an object to parse job.run_at and job.locked_at" $ \o -> do
@@ -600,7 +603,9 @@ jobEventListener = do
       mLockedAt_ <- o .:? "locked_at"
       jid <- o .: "id"
       pure (jid, runAt_, mLockedAt_)
-
+    
+    whatever :: (HasJobRunner m) => m ()
+    whatever = log LevelWarn $ LogText "Received job event, but ignoring it due to concurrency control"
 
 
 createJobQuery :: PGS.Query
