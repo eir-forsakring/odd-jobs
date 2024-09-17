@@ -115,7 +115,6 @@ import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as BSL
 import System.FilePath (FilePath)
 import qualified System.Directory as Dir
-import Data.Aeson.Internal (iparse, IResult(..), formatError)
 import Prelude hiding (log)
 import GHC.Exts (toList)
 import Database.PostgreSQL.Simple.Types as PGS (Identifier(..))
@@ -256,8 +255,6 @@ withDbConnection :: (HasJobRunner m)
 withDbConnection action = do
   pool <- getDbPool
   withRunInIO $ \runInIO -> withResource pool (runInIO . action)
-  --liftIO $ withResource pool (liftIO . action)
-
 
 --
 -- $dbHelpers
@@ -282,7 +279,7 @@ findJobByIdIO :: Connection -> TableName -> JobId -> IO (Maybe Job)
 findJobByIdIO conn tname jid = PGS.query conn findJobByIdQuery (tname, jid) >>= \case
   [] -> pure Nothing
   [j] -> pure (Just j)
-  js -> Prelude.error $ "Not expecting to find multiple jobs by id=" <> (show jid)
+  _ -> Prelude.error $ "Not expecting to find multiple jobs by id=" <> (show jid)
 
 
 saveJobQuery :: PGS.Query
@@ -312,7 +309,7 @@ saveJobIO conn tname Job{jobRunAt, jobStatus, jobPayload, jobLastError, jobAttem
   case rs of
     [] -> Prelude.error $ "Could not find job while updating it id=" <> (show jobId)
     [j] -> pure j
-    js -> Prelude.error $ "Not expecting multiple rows to ber returned when updating job id=" <> (show jobId)
+    _ -> Prelude.error $ "Not expecting multiple rows to ber returned when updating job id=" <> (show jobId)
 
 deleteJob :: (HasJobRunner m) => JobId -> m ()
 deleteJob jid = do
@@ -366,7 +363,7 @@ runJobWithTimeout timeoutSec job = do
 
   a <- async $ liftIO $ jobRunner_ job
 
-  x <- atomicModifyIORef' threadsRef $ \threads -> (a:threads, DL.map asyncThreadId (a:threads))
+  void $ atomicModifyIORef' threadsRef $ \threads -> (a:threads, DL.map asyncThreadId (a:threads))
   -- liftIO $ putStrLn $ "Threads: " <> show x
   log LevelDebug $ LogText $ toS $ "Spawned job in " <> show (asyncThreadId a)
 
@@ -570,13 +567,13 @@ jobEventListener = do
 
   withRunInIO $ \runInIO -> withResource pool $ \monitorDbConn -> do
     void $ liftIO $ PGS.execute monitorDbConn ("LISTEN ?") (Only $ pgEventName tname)
-    forever $ 
-    --  log LevelDebug $ LogText "[LISTEN/NOTIFY] Event loop"
-      --notif <- liftIO $ getNotification monitorDbConn
+    forever $ do
+      runInIO $ log LevelDebug $ LogText "[LISTEN/NOTIFY] Event loop"
+      notif <- runInIO $ getNotification monitorDbConn
       (runInIO concurrencyControlFn) >>= \case
-        False -> runInIO whatever -- log LevelWarn $ LogText "Received job event, but ignoring it due to concurrency control"
+        False -> runInIO $ log LevelWarn $ LogText "Received job event, but ignoring it due to concurrency control"
         True -> do
-          let pload = notificationData undefined --notif
+          let pload = notificationData notif
           runInIO (log LevelDebug $ LogText $ toS $ "NOTIFY | " <> show pload)
           case (eitherDecode $ toS pload) of
             Left e -> runInIO (log LevelError $ LogText $ toS $  "Unable to decode notification payload received from Postgres. Payload=" <> show pload <> " Error=" <> show e)
@@ -603,10 +600,6 @@ jobEventListener = do
       mLockedAt_ <- o .:? "locked_at"
       jid <- o .: "id"
       pure (jid, runAt_, mLockedAt_)
-    
-    whatever :: (HasJobRunner m) => m ()
-    whatever = log LevelWarn $ LogText "Received job event, but ignoring it due to concurrency control"
-
 
 createJobQuery :: PGS.Query
 createJobQuery = "INSERT INTO ? (run_at, status, payload, last_error, attempts, locked_at, locked_by) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING " <> concatJobDbColumns
