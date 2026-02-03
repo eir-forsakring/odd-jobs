@@ -17,7 +17,7 @@
 #
 # resolver: ./custom-snapshot.yaml
 # resolver: https://example.com/snapshots/2018-01-01.yaml
-resolver: lts-19.31
+resolver: lts-24.18
 
 # User packages to be built.
 # Various formats can be used as shown in the example below.
@@ -41,7 +41,8 @@ packages:
 #
 extra-deps:
   - timing-convenience-0.1@sha256:7ff807a9a9e5596f2b18d45c5a01aefb91d4a98f6a1008d183b5c550f68f7cb7,2092
-  - daemons-0.3.0@sha256:356edaf06a8cf5e9f19685f9ce793ad6d2b6bce2e55379f6b2aff1b0c07a633f,3178
+  - daemons-0.4.0@sha256:dad6c76620566d6e687daa7c85e86279a38a2ab72142c61e04b6c4485d120564,3410
+  #- daemons-0.3.0@sha256:356edaf06a8cf5e9f19685f9ce793ad6d2b6bce2e55379f6b2aff1b0c07a633f,3178
 
 
 # Override default flag values for local packages and extra-deps

@@ -19,7 +19,8 @@ import Servant.HTML.Lucid
 import Lucid
 import Lucid.Html5
 import Lucid.Base
-import Data.Text as T
+import qualified Data.Text as T
+import Data.Text (Text)
 import Network.Wai.Handler.Warp   (run)
 import Servant.Server.StaticFiles (serveDirectoryFileServer)
 import UnliftIO hiding (Handler)
@@ -28,6 +29,7 @@ import Data.Pool as Pool
 import Control.Monad.Reader
 import Data.String.Conv (toS)
 import Control.Monad.Except
+import Data.Functor (void)
 import Data.Time as Time
 import Data.Aeson as Aeson
 import qualified Data.HashMap.Strict as HM

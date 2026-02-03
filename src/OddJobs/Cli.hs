@@ -5,7 +5,8 @@
 module OddJobs.Cli where
 
 import Options.Applicative as Opts
-import Data.Text
+import qualified Data.Text as T
+import Data.Text (Text)
 import OddJobs.Job (startJobRunner, Config(..))
 import OddJobs.Types (UIConfig(..))
 import OddJobs.Job(LogLevel(..), LogEvent(..))
