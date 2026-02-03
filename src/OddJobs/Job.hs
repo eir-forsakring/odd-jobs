@@ -1,6 +1,5 @@
-{-# LANGUAGE RankNTypes, FlexibleInstances, FlexibleContexts, PartialTypeSignatures, TupleSections, DeriveGeneric, UndecidableInstances #-}
-{-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE FlexibleInstances #-} 
 
 module OddJobs.Job
   (
@@ -130,7 +129,7 @@ import Database.PostgreSQL.Simple.ToField as PGS (toField)
 -- __In future,__ this /internal/ implementation detail will allow us to offer a
 -- type-class based interface as well (similar to what
 -- 'Yesod.JobQueue.YesodJobQueue' provides).
-class (MonadUnliftIO m, MonadBaseControl IO m) => HasJobRunner m where
+class (MonadUnliftIO m, MonadIO m) => HasJobRunner m where
   getPollingInterval :: m Seconds
   onJobSuccess :: Job -> m ()
   onJobFailed :: m [JobErrHandler]
@@ -282,7 +281,7 @@ findJobByIdIO :: Connection -> TableName -> JobId -> IO (Maybe Job)
 findJobByIdIO conn tname jid = PGS.query conn findJobByIdQuery (tname, jid) >>= \case
   [] -> pure Nothing
   [j] -> pure (Just j)
-  js -> Prelude.error $ "Not expecting to find multiple jobs by id=" <> (show jid)
+  _ -> Prelude.error $ "Not expecting to find multiple jobs by id=" <> (show jid)
 
 
 saveJobQuery :: PGS.Query
@@ -312,7 +311,7 @@ saveJobIO conn tname Job{jobRunAt, jobStatus, jobPayload, jobLastError, jobAttem
   case rs of
     [] -> Prelude.error $ "Could not find job while updating it id=" <> (show jobId)
     [j] -> pure j
-    js -> Prelude.error $ "Not expecting multiple rows to ber returned when updating job id=" <> (show jobId)
+    _ -> Prelude.error $ "Not expecting multiple rows to ber returned when updating job id=" <> (show jobId)
 
 deleteJob :: (HasJobRunner m) => JobId -> m ()
 deleteJob jid = do
@@ -366,7 +365,7 @@ runJobWithTimeout timeoutSec job = do
 
   a <- async $ liftIO $ jobRunner_ job
 
-  x <- atomicModifyIORef' threadsRef $ \threads -> (a:threads, DL.map asyncThreadId (a:threads))
+  void $ atomicModifyIORef' threadsRef $ \threads -> (a:threads, DL.map asyncThreadId (a:threads))
   -- liftIO $ putStrLn $ "Threads: " <> show x
   log LevelDebug $ LogText $ toS $ "Spawned job in " <> show (asyncThreadId a)
 
@@ -477,7 +476,7 @@ waitForJobs = do
 getConcurrencyControlFn :: (HasJobRunner m)
                         => m (m Bool)
 getConcurrencyControlFn = getConcurrencyControl >>= \case
-  UnlimitedConcurrentJobs -> pure $ pure True
+  UnlimitedConcurrentJobs -> pure $ pure $ True
   MaxConcurrentJobs maxJobs -> pure $ do
     curJobs <- getRunnerEnv >>= (readIORef . envJobThreadsRef)
     pure $ (DL.length curJobs) < maxJobs
@@ -512,6 +511,7 @@ jobPollingIO pollerDbConn processName tname lockTimeout = do
 --         job was picked up execution, but didn't complete on time (possible
 --         because the thread/process executing it crashed without being able to
 --         update the DB)
+
 jobPoller :: (HasJobRunner m) => m ()
 jobPoller = do
   processName <- liftIO jobWorkerName
@@ -526,14 +526,14 @@ jobPoller = do
       False -> do
         log LevelWarn $ LogText $ "NOT polling the job queue due to concurrency control"
         -- If we can't run any jobs ATM, relax and wait for resources to free up
-        delayAction
+        delaySeconds =<< getPollingInterval 
       True -> do
-        nextAction <- mask_ $ do
+        mask_ $ do
           log LevelDebug $ LogText $ toS $ "[" <> processName <> "] Polling the job queue.."
           r <- liftIO $ jobPollingIO pollerDbConn processName tname lockTimeout
           case r of
             -- When we don't have any jobs to run, we can relax a bit...
-            [] -> pure delayAction
+            [] -> delaySeconds =<< getPollingInterval
 
             -- When we find one or more jobs to run, fork and try to find the next job without any delay...
             jobs -> do
@@ -541,19 +541,14 @@ jobPoller = do
                 case thing of
                   (Only (jid :: JobId)) -> do
                     void $ async $ runJob jid
-                  other ->
-                    error $ "WTF just happened? I was supposed to get the id of a job, but got: " ++ (show other)
+                  --other ->
+                  --  error $ "WTF just happened? I was supposed to get the id of a job, but got: " ++ (show other)
 
-              pure noDelayAction
-        nextAction
-  where
-    delayAction = delaySeconds =<< getPollingInterval
-    noDelayAction = pure ()
+              pure ()
 
 -- | Uses PostgreSQL's LISTEN/NOTIFY to be immediately notified of newly created
 -- jobs.
-jobEventListener :: (HasJobRunner m)
-                 => m ()
+jobEventListener :: (HasJobRunner m) => m ()
 jobEventListener = do
   log LevelInfo $ LogText "Starting the job monitor via LISTEN/NOTIFY..."
   pool <- getDbPool
@@ -606,8 +601,6 @@ jobEventListener = do
       mLockedAt_ <- o .:? "locked_at"
       jid <- o .: "id"
       pure (jid, runAt_, mLockedAt_)
-
-
 
 createJobQuery :: PGS.Query
 createJobQuery = "INSERT INTO ? (run_at, status, payload, last_error, attempts, locked_at, locked_by) VALUES (?, ?, ?, ?, ?, ?, ?) RETURNING " <> concatJobDbColumns

@@ -42,6 +42,7 @@ import GHC.Generics
 -- This example is using these functions to introduce an artificial delay of a
 -- few seconds in one of the jobs. Otherwise it is not really needed.
 import OddJobs.Types (delaySeconds, Seconds(..))
+import Control.Monad (void)
 \end{code} 
 
 === 3. Set-up a Haskell type to represent your job-payload
@@ -73,15 +74,15 @@ In this example, the core job-runner function is in the `IO` monad. In all proba
 myJobRunner :: Job -> IO ()
 myJobRunner job = do
   (throwParsePayload job) >>= \case
-    SendWelcomeEmail userId -> do
+    SendWelcomeEmail _userId -> do
       putStrLn $ "This should call the function that actually sends the welcome email. " <>
         "\nWe are purposely waiting 60 seconds before completing this job so that graceful shutdown can be demonstrated."
       delaySeconds (Seconds 60)
       putStrLn "60 second wait is now over..."
-    SendPasswordResetEmail tkn ->
+    SendPasswordResetEmail _tkn ->
       putStrLn "This should call the function that actually sends the password-reset email"
-    SetupSampleData userId -> do
-      Prelude.error "User onboarding is incomplete"
+    SetupSampleData _userId -> do
+      void $ Prelude.error "User onboarding is incomplete"
       putStrLn "This should call the function that actually sets up sample data in a newly registered user's account"
 \end{code}
 

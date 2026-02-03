@@ -29,7 +29,7 @@ import Data.Pool as Pool
 import Control.Monad.Reader
 import Data.String.Conv (toS)
 import Control.Monad.Except
-import Data.Functor (void)
+import Control.Monad (void)
 import Data.Time as Time
 import Data.Aeson as Aeson
 import qualified Data.HashMap.Strict as HM
@@ -77,7 +77,7 @@ data Env = Env
   }
 
 mkEnv :: (MonadIO m) => UIConfig -> (Text -> Text) -> m Env
-mkEnv cfg@UIConfig{..} linksFn = do
+mkEnv cfg@UIConfig{} linksFn = do
   allJobTypes <- fetchAllJobTypes cfg
   allJobRunners <- fetchAllJobRunners cfg
   envJobTypesRef <- newIORef allJobTypes
@@ -136,7 +136,7 @@ server2 cfg env = Routes
 refreshJobRunners :: UIConfig
                   -> Env
                   -> Handler NoContent
-refreshJobRunners cfg@UIConfig{..} Env{envRoutes=Web.Routes{..}, envJobRunnersRef} = do
+refreshJobRunners cfg@UIConfig{} Env{envRoutes=Web.Routes{..}, envJobRunnersRef} = do
   allJobRunners <- fetchAllJobRunners cfg
   atomicModifyIORef' envJobRunnersRef (\_ -> (allJobRunners, ()))
   throwError $ err302{errHeaders=[("Location", toS $ rFilterResults Nothing)]}

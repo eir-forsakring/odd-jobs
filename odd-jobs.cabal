@@ -1,10 +1,8 @@
 cabal-version: 1.12
 
--- This file has been generated from package.yaml by hpack version 0.34.4.
+-- This file has been generated from package.yaml by hpack version 0.37.0.
 --
 -- see: https://github.com/sol/hpack
---
--- hash: 0a3d7a88f812305fef46e2a08c7f906210e8559efc22300a79927a6b1256daf1
 
 name:           odd-jobs
 version:        0.2.2
